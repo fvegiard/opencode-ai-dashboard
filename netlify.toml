@@ -1,0 +1,16 @@
+[build]
+  publish = "."
+  command = "echo 'Static site ready'"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self' https://*.supabase.co https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

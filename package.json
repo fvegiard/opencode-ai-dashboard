@@ -1,0 +1,12 @@
+{
+  "name": "opencode-ai-dashboard",
+  "version": "1.0.0",
+  "description": "fvegiard AI System Dashboard - Live monitoring with Mermaid architecture diagrams and Supabase integration",
+  "scripts": {
+    "build": "echo 'Static site - no build needed'",
+    "start": "npx serve ."
+  },
+  "keywords": ["dashboard", "ai", "supabase", "mermaid", "netlify"],
+  "author": "fvegiard",
+  "license": "MIT"
+}
