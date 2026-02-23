@@ -749,6 +749,40 @@
     backdrop-filter: blur(4px);
   }
 
+  /* ─── HEALTH INDICATORS ──────────────────────────────── */
+  .health-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border);
+    transition: border-color .15s;
+  }
+  .health-badge:hover { border-color: var(--accent); }
+  .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .health-ok  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+  .health-warn{ background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .health-err { background: var(--red);    box-shadow: 0 0 8px var(--red); animation: pulse .9s infinite; }
+  .health-off { background: var(--text2); }
+
+  #health-panel {
+    position: absolute; bottom: 0; left: 145px; right: 0;
+    background: rgba(13,17,23,.97); border-top: 1px solid var(--border);
+    max-height: 240px; overflow-y: auto; z-index: 20;
+    padding: 10px 16px 12px; flex-direction: column; gap: 4px;
+    display: none; backdrop-filter: blur(4px);
+  }
+  #health-panel.visible { display: flex; }
+  .hs-section { font-size: 9px; color: var(--text2); text-transform: uppercase;
+    letter-spacing: .1em; margin: 8px 0 3px; border-bottom: 1px solid var(--border); padding-bottom: 3px; }
+  .hs-row { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 1px 0; }
+  .hs-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .hs-label { color: var(--text); min-width: 180px; }
+  .hs-val { color: var(--text2); font-size: 10px; flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .hs-row.hs-err .hs-label { color: var(--red); }
+  .hs-row.hs-warn .hs-label { color: var(--yellow); }
+  .hs-offline { color: var(--text2); font-size: 11px; font-style: italic; padding: 4px 0; }
+  .hs-offline code { background: #161b22; padding: 1px 5px; border-radius: 3px; font-style: normal; }
+
   #tooltip strong {
     color: var(--accent);
     display: block;
@@ -774,12 +808,20 @@
     <span class="db-icon">⬡</span>
     Supabase:&nbsp;<strong id="supabase-count">—</strong>&nbsp;rows
   </div>
+  <div class="sep"></div>
+  <div class="health-badge" id="health-badge" onclick="toggleHealthPanel()" title="Diagnostic local — claude-diag:8766">
+    <div class="health-dot health-off" id="health-dot"></div>
+    <span id="health-txt">Diag —</span>
+  </div>
   <div class="right">
     <span class="kbd-hint">Keys 1–5 to switch</span>
     <div class="tag">Cytoscape 3.30</div>
     <div class="tag">dagre</div>
   </div>
 </div>
+
+<!-- HEALTH PANEL -->
+<div id="health-panel"></div>
 
 <!-- APP -->
 <div id="app">
@@ -1388,6 +1430,11 @@ function loadDiagram(id) {
       }
     });
 
+    // Re-apply health colors after layout
+    cy.one('layoutstop', () => {
+      if (lastDiag) applyHealthToGraph(diagToNodeStatus(lastDiag));
+    });
+
     // Zoom tracking
     cy.on('zoom pan', () => {
       document.getElementById('zoom-label').textContent =
@@ -1618,9 +1665,178 @@ async function fetchCount() {
   }
 }
 
+// ─── HEALTH / DIAG ────────────────────────────────────────────────────────────
+const DIAG_URL = 'http://localhost:8766/api/diag';
+let lastDiag = null;
+let healthVisible = false;
+
+function toggleHealthPanel() {
+  healthVisible = !healthVisible;
+  document.getElementById('health-panel').classList.toggle('visible', healthVisible);
+}
+
+function diagToNodeStatus(d) {
+  const s = {};
+  if (!d) return s;
+  const oc = d.openclaw || {}, cfg = d.config || {}, mcp = d.mcp || {};
+  const ports = d.ports || {}, gpu = d.gpu || {};
+
+  // openclaw service
+  if (oc.service_ok && oc.gateway_ok)
+    s['openclaw'] = {state:'ok', msg:`v${oc.version} · service active`};
+  else if (oc.service === 'active')
+    s['openclaw'] = {state:'warn', msg:`gateway: ${oc.gateway}`};
+  else
+    s['openclaw'] = {state:'err', msg:`service: ${oc.service||'unknown'}`};
+
+  // config issues override openclaw status
+  const allIssues = [...(cfg.issues||[]), ...(cfg.warnings||[])];
+  if (allIssues.length) s['openclaw'] = {state: cfg.issues?.length ? 'err':'warn', msg: allIssues[0]};
+
+  // gateway port
+  if (!ports.openclaw_gateway?.open)
+    s['antigravity'] = {state:'warn', msg:'gateway port 18789 closed'};
+  else
+    s['antigravity'] = {state:'ok', msg:'gateway reachable'};
+
+  // supabase
+  const cnt = document.getElementById('supabase-count')?.textContent;
+  s['supabase'] = (cnt && cnt !== '—') ? {state:'ok', msg:`${cnt} rows`} : {state:'err', msg:'unreachable'};
+
+  // GPU
+  s['rtx5090'] = gpu.available
+    ? {state:'ok', msg:`${gpu.name} · ${gpu.temp} · ${gpu.util} util`}
+    : {state:'off', msg:'nvidia-smi not available'};
+
+  // claude hooks
+  s['claude'] = (d.hooks?.count||0) > 0
+    ? {state:'ok', msg:`${d.hooks.count} hooks`}
+    : {state:'warn', msg:'no hooks detected'};
+
+  // opencode + omc — running (this session)
+  s['opencode'] = {state:'ok', msg:'active session'};
+  s['omc'] = {state:'ok', msg:'plugin loaded'};
+  s['dashboard'] = {state:'ok', msg:'serving'};
+
+  // MCP nodes
+  const idMap = {'sequential-thinking':'seqthink','git-dashboard':'git_dash'};
+  for (const [name, info] of Object.entries(mcp)) {
+    const nodeId = idMap[name] || name;
+    s[nodeId] = info.alive
+      ? {state:'ok', msg:`pid ${info.pid}`}
+      : {state:'warn', msg:'not running (starts on demand)'};
+  }
+  return s;
+}
+
+function applyHealthToGraph(nodeStatus) {
+  if (!cy) return;
+  const C = {ok:'#3fb950', warn:'#e3b341', err:'#f85149', off:'#6e7681'};
+  cy.nodes().forEach(n => {
+    const st = nodeStatus[n.id()];
+    if (!st) return;
+    n.style('border-color', C[st.state] || n.data('color'));
+    n.style('border-width', st.state === 'err' ? 3 : 2);
+  });
+}
+
+function renderHealthPanel(d, nodeStatus) {
+  const panel = document.getElementById('health-panel');
+  if (!d) {
+    panel.innerHTML = `<div class="hs-offline">⚡ claude-diag offline — lancer : <code>python3 ~/claude-diag/server.py</code></div>`;
+    return;
+  }
+  const oc = d.openclaw||{}, sys = d.system||{}, cfg = d.config||{};
+  const logs = d.logs||{}, ports = d.ports||{}, gpu = d.gpu||{}, mcp = d.mcp||{};
+  const dot = (color) => `<div class="hs-dot" style="background:${color}"></div>`;
+  const row = (cls, color, label, val='') =>
+    `<div class="hs-row ${cls}">${dot(color)}<span class="hs-label">${label}</span><span class="hs-val">${val}</span></div>`;
+
+  const rows = [];
+
+  // Services
+  rows.push('<div class="hs-section">Services</div>');
+  rows.push(row(oc.service_ok?'':'hs-err', oc.service_ok?'#3fb950':'#f85149',
+    'openclaw-gateway.service', `${oc.service||'?'} · gw:${oc.gateway_ok?'ok':'fail'}`));
+  rows.push(row(ports.openclaw_gateway?.open?'':'hs-err', ports.openclaw_gateway?.open?'#3fb950':'#f85149',
+    'Port 18789 (gateway)', ports.openclaw_gateway?.open?'listening':'CLOSED'));
+  if (gpu.available)
+    rows.push(row('', '#3fb950', 'RTX 5090', `${gpu.name} · ${gpu.temp} · GPU ${gpu.util} · ${gpu.mem_used}/${gpu.mem_total}`));
+
+  // Config issues
+  const allIssues = [...(cfg.issues||[]), ...(cfg.warnings||[])];
+  if (allIssues.length) {
+    rows.push('<div class="hs-section">Config Issues</div>');
+    allIssues.forEach(i => {
+      const isErr = (cfg.issues||[]).includes(i);
+      rows.push(row(isErr?'hs-err':'hs-warn', isErr?'#f85149':'#e3b341', i));
+    });
+  }
+
+  // Log errors
+  if (logs.error_count > 0) {
+    rows.push(`<div class="hs-section">Log Errors (${logs.error_count})</div>`);
+    (logs.errors||[]).slice(0,5).forEach(e =>
+      rows.push(row('hs-err','#f85149','', e.substring(0,140)))
+    );
+  }
+
+  // MCP
+  rows.push('<div class="hs-section">MCP Servers</div>');
+  for (const [name, info] of Object.entries(mcp)) {
+    rows.push(row(info.alive?'':'hs-warn', info.alive?'#3fb950':'#6e7681', name,
+      info.alive?`pid ${info.pid}`:'not running'));
+  }
+
+  // System
+  rows.push('<div class="hs-section">System</div>');
+  rows.push(row('','#58a6ff','Memory', sys.memory));
+  rows.push(row('','#58a6ff','Disk', sys.disk));
+  rows.push(row('','#58a6ff','Load (1/5/15)', sys.load));
+  rows.push(row('','#58a6ff','Uptime', sys.uptime));
+
+  panel.innerHTML = rows.join('');
+}
+
+function updateHealthBadge(d, nodeStatus) {
+  const dot = document.getElementById('health-dot');
+  const txt = document.getElementById('health-txt');
+  if (!d) { dot.className='health-dot health-off'; txt.textContent='Diag offline'; return; }
+  const errs = Object.values(nodeStatus).filter(s=>s.state==='err').length;
+  const warns = Object.values(nodeStatus).filter(s=>s.state==='warn').length;
+  if (errs > 0) {
+    dot.className='health-dot health-err';
+    txt.textContent=`${errs} error${errs>1?'s':''}${warns?' · '+warns+' warn':''}`;
+  } else if (warns > 0) {
+    dot.className='health-dot health-warn';
+    txt.textContent=`${warns} warning${warns>1?'s':''}`;
+  } else {
+    dot.className='health-dot health-ok';
+    txt.textContent='All healthy';
+  }
+}
+
+async function fetchDiag() {
+  try {
+    const r = await fetch(DIAG_URL, {signal: AbortSignal.timeout(4000)});
+    const d = await r.json();
+    lastDiag = d;
+    const ns = diagToNodeStatus(d);
+    applyHealthToGraph(ns);
+    renderHealthPanel(d, ns);
+    updateHealthBadge(d, ns);
+  } catch(_) {
+    lastDiag = null;
+    renderHealthPanel(null, {});
+    updateHealthBadge(null, {});
+  }
+}
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 fetchCount();
 setInterval(fetchCount, 60000);
+fetchDiag();
+setInterval(fetchDiag, 30000);
 loadDiagram('system');
 
 })();
