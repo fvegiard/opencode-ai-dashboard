@@ -1164,29 +1164,36 @@ const DIAGRAMS = {
 
   agents: {
     title: 'Agent Routing',
-    subtitle: '— Multi-agent orchestration topology',
+    subtitle: '— Orchestration réelle • 297 sous-sessions en DB',
     rankDir: 'TB',
     legend: [
-      { color: C.purple, label: 'Orchestrator' },
-      { color: C.gold,   label: 'Advisor' },
-      { color: C.blue,   label: 'Worker' },
+      { color: C.purple, label: 'Orchestrateur' },
+      { color: C.blue,   label: 'Travailleur (write)' },
+      { color: C.gray,   label: 'Read-only strict' },
+      { color: C.pink,   label: 'Plan/Conseil' },
     ],
     nodes: [
-      { id: 'sisyphus',   label: 'Sisyphus',    type: 'orchestrator', color: C.purple, desc: 'Master orchestrator' },
-      { id: 'oracle',     label: 'Oracle',      type: 'advisor',      color: C.gold,   desc: 'Read-only expert' },
-      { id: 'explore',    label: 'Explore',     type: 'worker',       color: C.blue,   desc: 'AST & codebase scan' },
-      { id: 'librarian',  label: 'Librarian',   type: 'worker',       color: C.cyan,   desc: 'External docs lookup' },
-      { id: 'metis',      label: 'Metis',       type: 'worker',       color: C.pink,   desc: 'Strategic planning' },
-      { id: 'momus',      label: 'Momus',       type: 'worker',       color: C.orange, desc: 'Code criticism' },
-      { id: 'prometheus', label: 'Prometheus',  type: 'worker',       color: C.red,    desc: 'Architecture design' },
+      { id: 'sisyphus', label: 'Sisyphus',         type: 'orchestrator', color: C.purple, desc: 'Root orchestrator — spawne tout, gère le todo, aucune restriction' },
+      { id: 'sjunior',  label: 'Sisyphus-Junior',  type: 'orchestrator', color: C.blue,   desc: 'Sous-orchestrateur — peut spawner + call_omo_agent, task:allow' },
+      { id: 'metis',    label: 'Metis',            type: 'advisor',      color: C.pink,   desc: 'Plan Consultant — gap analysis, task+omo allowed' },
+      { id: 'explore',  label: 'explore ×N',       type: 'worker',       color: C.gray,   desc: 'Recon read-only strict — no write/edit/task/question/omo. Plusieurs en parallèle.' },
+      { id: 'librarian',label: 'librarian',        type: 'worker',       color: C.gray,   desc: 'Recherche docs externe — read-only, no task/omo/question' },
+      { id: 'lookat',   label: 'look_at',          type: 'worker',       color: C.yellow, desc: 'Inspection visuelle browser — no read/write/task. Screenshot only.' },
     ],
     edges: [
-      { s: 'sisyphus', t: 'oracle',     label: 'consult' },
-      { s: 'sisyphus', t: 'explore',    label: 'dispatch' },
-      { s: 'sisyphus', t: 'librarian',  label: 'dispatch' },
-      { s: 'sisyphus', t: 'metis',      label: 'dispatch' },
-      { s: 'sisyphus', t: 'momus',      label: 'dispatch' },
-      { s: 'sisyphus', t: 'prometheus', label: 'dispatch' },
+      { s: 'sisyphus', t: 'sjunior',  label: 'spawn' },
+      { s: 'sisyphus', t: 'explore',  label: 'dispatch ×N' },
+      { s: 'sisyphus', t: 'lookat',   label: 'visual check' },
+      { s: 'sisyphus', t: 'librarian',label: 'research' },
+      { s: 'sisyphus', t: 'metis',    label: 'plan' },
+      { s: 'sjunior',  t: 'explore',  label: 'dispatch' },
+      { s: 'sjunior',  t: 'librarian',label: 'research' },
+      { s: 'sjunior',  t: 'metis',    label: 'consult' },
+      { s: 'explore',  t: 'sisyphus', label: 'résultats' },
+      { s: 'explore',  t: 'sjunior',  label: 'résultats' },
+      { s: 'metis',    t: 'sjunior',  label: 'plan_report' },
+      { s: 'librarian',t: 'sisyphus', label: 'docs' },
+      { s: 'lookat',   t: 'sisyphus', label: 'screenshot' },
     ],
   },
 
@@ -1371,7 +1378,7 @@ function buildStyle() {
 }
 
 // ─── INIT GRAPH ───────────────────────────────────────────────────────────────
-function loadDiagram(id) {
+window.loadDiagram = function loadDiagram(id) {
   currentId = id;
   const data = DIAGRAMS[id];
   if (!data) return;
