@@ -1670,7 +1670,7 @@ const DIAG_URL = 'http://localhost:8766/api/diag';
 let lastDiag = null;
 let healthVisible = false;
 
-function toggleHealthPanel() {
+window.toggleHealthPanel = function toggleHealthPanel() {
   healthVisible = !healthVisible;
   document.getElementById('health-panel').classList.toggle('visible', healthVisible);
 }
